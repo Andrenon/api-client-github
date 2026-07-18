@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 from typing import Any, Optional
+from urllib.parse import parse_qs, urlparse
 
 import requests
 
@@ -171,29 +172,46 @@ def _raise_for_status(response: requests.Response) -> None:
     )
 
 
-def get_repo(owner: str, repo: str, token: Optional[str] = None) -> dict[str, Any]:
-    """Consulta el endpoint principal: GET /repos/{owner}/{repo}."""
-    response = get(f"/repos/{owner}/{repo}", token=token)
-    return response.json()
+def get_paginated_count(path: str, token: Optional[str] = None) -> int:
+    """
+    Cuenta la cantidad total de elementos de un endpoint paginado sin traer
+    todas las páginas.
+
+    Estrategia: se pide la página con per_page=1. GitHub agrega un header
+    `Link` con rel="last" que contiene el número de la última página — como
+    cada página tiene 1 elemento, ese número de página *es* el total. Si no
+    hay rel="last" (porque hay 0 o 1 elementos en total), se cuenta directo
+    del body.
+
+    Esto evita traer el listado completo (que en repos grandes puede ser
+    cientos de páginas) solo para saber cuántos elementos hay, ahorrando
+    presupuesto de rate limit.
+    """
+    response = get(path, token=token, params={"per_page": 1})
+    if "last" in response.links:
+        last_url = response.links["last"]["url"]
+        query = parse_qs(urlparse(last_url).query)
+        return int(query["page"][0])
+    return len(response.json())
 
 
 # ---------------------------------------------------------------------------
-# Uso manual rápido (útil para probar sin escribir un script aparte)
+# Uso manual rápido: prueba el cliente HTTP crudo con cualquier path de la API
+# (para probar un endpoint puntual sin pasar por los módulos de endpoints/)
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     import json
     import sys
 
-    if len(sys.argv) != 2 or "/" not in sys.argv[1]:
-        print("Uso: python http_client.py <owner>/<repo>")
+    if len(sys.argv) != 2 or not sys.argv[1].startswith("/"):
+        print("Uso: python http_client.py /repos/<owner>/<repo>")
+        print("Ejemplo: python http_client.py /repos/torvalds/linux")
         sys.exit(1)
 
-    owner_arg, repo_arg = sys.argv[1].split("/", 1)
-
     try:
-        data = get_repo(owner_arg, repo_arg)
-        print(json.dumps(data, indent=2, ensure_ascii=False))
+        resp = get(sys.argv[1])
+        print(json.dumps(resp.json(), indent=2, ensure_ascii=False))
     except GitHubAPIError as e:
         print(f"Error [{e.status_code}]: {e}")
         sys.exit(1)
