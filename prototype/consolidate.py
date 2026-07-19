@@ -35,7 +35,7 @@ def consolidate(owner: str, repo: str, token: Optional[str] = None) -> dict[str,
         4. GET /repos/{owner}/{repo}/releases
         5. GET /repos/{owner}/{repo}/branches
     """
-    repo_data = http_client.get_repo(owner, repo, token=token)
+    repo_data = repo_endpoint.get_repo(owner, repo, token=token)
     languages_data = languages.get_languages(owner, repo, token=token)
     contributors_count = contributors.get_contributors_count(owner, repo, token=token)
     releases_count = releases.get_releases_count(owner, repo, token=token)

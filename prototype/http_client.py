@@ -50,6 +50,19 @@ class ForbiddenError(GitHubAPIError):
     """403 - Acceso prohibido (no relacionado a rate limit)."""
 
 
+class ResourceTooLargeError(GitHubAPIError):
+    """
+    403 - GitHub se niega a calcular el listado pedido porque el repositorio
+    tiene demasiado historial (caso documentado y real de /contributors en
+    repos grandes, ej. torvalds/linux o chromium/chromium: "The history or
+    contributor list is too large to list contributors for this repository
+    via the API."). No es un problema de permisos ni de rate limit -es una
+    limitación de la propia API para listados costosos de calcular- así que
+    se distingue explícitamente de ForbiddenError para no confundir al
+    usuario pidiéndole que revise el token.
+    """
+
+
 class RepositoryNotFoundError(GitHubAPIError):
     """404 - El repositorio no existe, o no es accesible sin autenticación."""
 
@@ -160,6 +173,19 @@ def _raise_for_status(response: requests.Response) -> None:
                 response=response,
                 reset_at=response.headers.get("X-RateLimit-Reset"),
             )
+
+        try:
+            body_message = response.json().get("message", "")
+        except ValueError:
+            body_message = ""
+        if "too large" in body_message.lower():
+            raise ResourceTooLargeError(
+                "El repositorio tiene demasiado historial para que GitHub "
+                "calcule este listado vía API (403).",
+                status_code=403,
+                response=response,
+            )
+
         raise ForbiddenError(
             "Acceso prohibido (403).", status_code=403, response=response
         )
@@ -193,6 +219,21 @@ def get_paginated_count(path: str, token: Optional[str] = None) -> int:
         query = parse_qs(urlparse(last_url).query)
         return int(query["page"][0])
     return len(response.json())
+
+
+def get_rate_limit_status(token: Optional[str] = None) -> dict[str, int]:
+    """
+    Consulta GET /rate_limit y devuelve el estado del rate limit "core" (el
+    que aplica a /repos y a los 4 endpoints complementarios usados por esta
+    app): remaining, limit y reset (epoch).
+
+    A diferencia del resto de los endpoints, éste NO cuenta contra el límite
+    que informa -lo confirmamos empíricamente contra la API real: incluso
+    con remaining=0, /rate_limit sigue devolviendo 200-, así que es seguro
+    llamarlo siempre, incluso justo después de haber recibido un 429/403.
+    """
+    response = get("/rate_limit", token=token)
+    return response.json()["resources"]["core"]
 
 
 # ---------------------------------------------------------------------------
