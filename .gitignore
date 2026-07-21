@@ -1,53 +1,56 @@
 # =========================
 # Python (Prototipo Fase 1)
 # =========================
-# Ignora cualquier directorio __pycache__ en todo el proyecto
 __pycache__/
-
-# Archivos compilados de Python
 *.py[cod]
 *$py.class
 
-# Entornos virtuales (por si levantás uno local)
 venv/
 .venv/
 
-# Caché de frameworks de testing (ej. pytest para tu carpeta tests/)
 .pytest_cache/
 .coverage
 
 # =========================
 # C (Implementación Fase 3)
 # =========================
-# Directorio de artefactos de compilación
 build/
 
-# Archivos objeto y ejecutables compilados que puedan quedar sueltos
 *.o
 *.out
 *.exe
+*.a
+*.so
+
+# Pendiente: agregar acá el binario final una vez definido el target
+# del Makefile en el Sprint 3.1, ej:
+# /github-client
 
 # =========================
 # Bases de Datos
 # =========================
-# Archivos de persistencia local generados por db.py o db.c
 *.sqlite
 *.sqlite3
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
 
 # =========================
 # Entorno y Configuración
 # =========================
-# Archivos de variables de entorno (NUNCA subir el token de GitHub)
 .env
 .env.local
 
-# Archivos de swap y temporales de Neovim/Vim
 *.swp
 *.swo
 *~
 
-# Archivos ocultos del sistema operativo (macOS/Linux/Windows)
 .DS_Store
 Thumbs.db
+
+# =========================
+# Logs y archivos de prueba
+# =========================
+*.log
+

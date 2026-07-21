@@ -44,8 +44,13 @@ db.upsert_asset(conn, 'torvalds', 'linux', {'name': 'linux', 'stars': 215000})
 print(db.get_asset(conn, 'torvalds', 'linux'))
 "
 ```
-### Sprint 1.4
+Directo con el CLI de sqlite3:
+```bash
+sqlite3 github_client.db "SELECT asset_uri, title, entity, provider, created_at, updated_at FROM assets;"
+sqlite3 github_client.db ".schema assets"
+```
 
+### Sprint 1.4
 ```bash
 cd prototype
 ```
@@ -70,6 +75,4 @@ curl -s \
   -H "Authorization: Bearer $GITHUB_TOKEN" \
   "https://api.github.com/rate_limit" | python3 -m json.tool
 ```
-
-
 
