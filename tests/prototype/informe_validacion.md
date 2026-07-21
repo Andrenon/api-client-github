@@ -10,7 +10,7 @@
 
 ## 1. Resumen de resultados
 
-| # | Caso | Validado manualmente (tests.md) |
+| # | Caso | Validado (comandos-manuales.md) |
 |---|---|---|---|
 | 1 | Repo válido | ✅ PASA |
 | 2 | Repo inexistente (404) | ✅ PASA |
@@ -95,7 +95,7 @@ Exit code 1, sin persistencia. Repetido dos veces (una sin token, una con `GITHU
 
 ### 4.3 Sin token (rate limit)
 
-Validado extensamente durante toda la Fase 1 (ver tests manuales): pruebas devolviendo `403` con `X-RateLimit-Remaining: 0`, clasificadas correctamente como `RateLimitExceededError`, con mensaje claro y `reset_at` derivado de `X-RateLimit-Reset`. No se repite la evidencia acá por brevedad; el comportamiento con token válido (4999 → 4993 de 5000 a lo largo de la ronda de cierre, decreciendo de a 1 por prueba) confirma además que el conteo de cupo se lee correctamente.
+Validado durante toda la Fase 1: pruebas devolviendo `403` con `X-RateLimit-Remaining: 0`, clasificadas correctamente como `RateLimitExceededError`, con mensaje claro y `reset_at` derivado de `X-RateLimit-Reset`. No se repite la evidencia acá por brevedad; el comportamiento con token válido (4999 → 4993 de 5000 a lo largo de la ronda de cierre, decreciendo de a 1 por prueba) confirma además que el conteo de cupo se lee correctamente.
 
 ### 4.4 Token inválido (401)
 ```bash
