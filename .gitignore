@@ -22,9 +22,14 @@ build/
 *.a
 *.so
 
-# Pendiente: agregar acá el binario final una vez definido el target
-# del Makefile en el Sprint 3.1, ej:
-# /github-client
+# El target final del Makefile (definido en el Sprint 3.1) es
+# build/github-client, ya cubierto por "build/" arriba -no hace falta
+# una entrada aparte para el binario final.
+
+# Volcados de core (gdb/valgrind; uso activo durante la Fase 3)
+core
+core.*
+vgcore.*
 
 # =========================
 # Bases de Datos
