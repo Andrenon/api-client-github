@@ -38,16 +38,35 @@ cd prototype
 ```
 ```bash
 python3 -c "
-import db
-conn = db.get_connection()
-db.upsert_asset(conn, 'torvalds', 'linux', {'name': 'linux', 'stars': 215000})
-print(db.get_asset(conn, 'torvalds', 'linux'))
+import sqlite3, json
+conn = sqlite3.connect('github_client.db')
+for row in conn.execute('SELECT asset_uri, title, entity, provider, created_at, updated_at FROM assets'):
+    print(row)
 "
 ```
-Directo con el CLI de sqlite3:
+Con el CLI de sqlite3:
 ```bash
-sqlite3 github_client.db "SELECT asset_uri, title, entity, provider, created_at, updated_at FROM assets;"
+# Ver que la tabla exista con el esquema correcto
 sqlite3 github_client.db ".schema assets"
+
+# Ver todas las filas persistidas (formato tabla legible)
+sqlite3 -header -column github_client.db \
+  "SELECT id, asset_uri, title, entity, provider, created_at, updated_at FROM assets;"
+
+# Ver el meta_payload completo de un repo puntual, formateado
+sqlite3 github_client.db \
+  "SELECT meta_payload FROM assets WHERE asset_uri='github://torvalds/linux';" | python3 -m json.tool
+
+# Confirmar que el upsert no duplica: correlo dos veces seguidas...
+python3 github_client.py octocat/Hello-World --json >/dev/null
+python3 github_client.py octocat/Hello-World --json >/dev/null
+# ...y verificar que sigue habiendo 1 sola fila para ese asset_uri
+sqlite3 github_client.db \
+  "SELECT COUNT(*) FROM assets WHERE asset_uri='github://octocat/Hello-World';"
+
+# Confirmar que created_at no cambia pero updated_at sí, entre esas dos corridas
+sqlite3 -header -column github_client.db \
+  "SELECT asset_uri, created_at, updated_at FROM assets WHERE asset_uri='github://octocat/Hello-World';"
 ```
 
 ### Sprint 1.4
