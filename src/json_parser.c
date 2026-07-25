@@ -210,3 +210,68 @@ GitHubErrorCode json_parser_parse_languages(const char *json_body, RepoInfo *inf
     return GH_OK;
 }
 
+/* --------------------------------------------------------------------- */
+/* RepoInfo -> JSON (sentido inverso, Sprint 3.4)                         */
+/* --------------------------------------------------------------------- */
+
+bool json_parser_serialize_repo_info(const RepoInfo *info, bool pretty, char **out_json,
+                                      GitHubError *out_error) {
+    *out_json = NULL;
+
+    cJSON *root = cJSON_CreateObject();
+    if (root == NULL) {
+        github_error_set(out_error, GH_ERR_INTERNAL, 0,
+                          "Sin memoria al armar el JSON consolidado.");
+        return false;
+    }
+
+    /* Mismo orden que el "Esquema JSON Consolidado" de README.md, para
+     * que un diff visual contra un ejemplo del contrato sea directo. */
+    cJSON_AddNumberToObject(root, "id", (double)info->id);
+    cJSON_AddStringToObject(root, "name", info->name != NULL ? info->name : "");
+    cJSON_AddStringToObject(root, "owner", info->owner != NULL ? info->owner : "");
+
+    if (info->description != NULL) {
+        cJSON_AddStringToObject(root, "description", info->description);
+    } else {
+        cJSON_AddNullToObject(root, "description");
+    }
+
+    cJSON_AddNumberToObject(root, "stars", (double)info->stars);
+    cJSON_AddNumberToObject(root, "forks", (double)info->forks);
+    cJSON_AddNumberToObject(root, "watchers", (double)info->watchers);
+    cJSON_AddStringToObject(root, "default_branch",
+                             info->default_branch != NULL ? info->default_branch : "");
+
+    cJSON *languages_obj = cJSON_AddObjectToObject(root, "languages");
+    if (languages_obj != NULL) {
+        for (size_t i = 0; i < info->languages_count; i++) {
+            cJSON_AddNumberToObject(languages_obj, info->languages[i].name,
+                                     (double)info->languages[i].bytes);
+        }
+    }
+
+    if (info->contributors_count.present) {
+        cJSON_AddNumberToObject(root, "contributors_count",
+                                 (double)info->contributors_count.value);
+    } else {
+        cJSON_AddNullToObject(root, "contributors_count");
+    }
+
+    cJSON_AddNumberToObject(root, "branches_count", (double)info->branches_count);
+    cJSON_AddNumberToObject(root, "releases_count", (double)info->releases_count);
+
+    char *json_text = pretty ? cJSON_Print(root) : cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+
+    if (json_text == NULL) {
+        github_error_set(out_error, GH_ERR_INTERNAL, 0,
+                          "Sin memoria al imprimir el JSON consolidado.");
+        return false;
+    }
+
+    *out_json = json_text; /* cJSON_Print* usa malloc(), lo puede liberar
+                             * el caller con free() normal */
+    return true;
+}
+

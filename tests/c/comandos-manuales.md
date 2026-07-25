@@ -2,16 +2,11 @@
 
 Todos los comandos se corren desde la raíz del repo (`api-client-github/`).
 
-### Con token, agregar
+### Con token agregar:
+`-H "Authorization: Bearer $GITHUB_TOKEN" \`
 
-```bash
--H "Authorization: Bearer $GITHUB_TOKEN" \
-```
-
-**Previa carga de la variable**:
-```bash
-export GITHUB_TOKEN="tu_token"
-```
+Previo cargar variable de entorno:
+`export GITHUB_TOKEN="github_token"`
 
 ---
 
@@ -152,12 +147,6 @@ valgrind --leak-check=full --error-exitcode=1 ./build/test_http_client_unit
 valgrind --leak-check=full --error-exitcode=1 ./build/test_json_parser_unit
 ```
 
-### `make build` sigue fallando a propósito (todavía sin `main.c`, hasta 3.6)
-
-```bash
-make clean && make build   # esperado: "undefined reference to `main'"
-```
-
 ### Curl para comparar el JSON crudo contra lo que extrae `json_parser_parse_repo` / `json_parser_parse_languages`
 
 ```bash
@@ -168,5 +157,52 @@ curl -s -H "User-Agent: api-client-github" \
 curl -s -H "User-Agent: api-client-github" \
   -H "Accept: application/vnd.github+json" \
   "https://api.github.com/repos/octocat/Hello-World/languages" | python3 -m json.tool
+```
+
+---
+
+## Sprint 3.4 — Persistencia SQLite
+
+### Compilar y correr todos los unit tests offline (http_client + json_parser + db)
+
+```bash
+make test-unit
+```
+
+### Chequeo de memoria específico de db.c
+
+```bash
+valgrind --leak-check=full --error-exitcode=1 ./build/test_db_unit
+```
+
+### Inspeccionar a mano una base creada por el binario en C (una vez exista main.c, Sprint 3.6)
+
+Mismos comandos que `prototype/github_client.db`, aplicados al `github_client.db` que genere el binario en C:
+
+```bash
+sqlite3 github_client.db "SELECT asset_uri, title, entity, provider, created_at, updated_at FROM assets;"
+sqlite3 github_client.db ".schema assets"
+```
+
+---
+
+## Sprint 3.5 — Consolidación y lógica principal (core.c)
+
+### Compilar y correr todos los unit tests offline (incluye core con dependencias inyectadas)
+
+```bash
+make test-unit
+```
+
+### Chequeo de memoria específico de core.c
+
+```bash
+valgrind --leak-check=full --error-exitcode=1 ./build/test_core_unit
+```
+
+### Smoke test en vivo del wiring real (core_consolidate real, no inyectado)
+
+```bash
+make test-core-live
 ```
 

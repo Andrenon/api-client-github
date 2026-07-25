@@ -174,5 +174,9 @@ GitHubErrorCode http_client_get_rate_limit_status(const char *token,
                                                    RateLimitStatus *out_status,
                                                    GitHubError *out_error);
 
+/* Helper público de construcción de errores */
+void github_error_set(GitHubError *out_error, GitHubErrorCode code, long status_code,
+                      const char *message);
+
 #endif /* HTTP_CLIENT_H */
 

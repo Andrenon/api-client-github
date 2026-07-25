@@ -12,7 +12,7 @@
 /* Helpers de error                                                       */
 /* --------------------------------------------------------------------- */
 
-static void set_error(GitHubError *out_error, GitHubErrorCode code, long status_code,
+void github_error_set(GitHubError *out_error, GitHubErrorCode code, long status_code,
                       const char *message) {
     if (out_error == NULL) {
         return;
@@ -89,23 +89,23 @@ GitHubErrorCode http_client_classify(const HttpResponse *response, GitHubError *
     long status = response->status_code;
 
     if (status == 200) {
-        set_error(out_error, GH_OK, status, "");
+        github_error_set(out_error, GH_OK, status, "");
         return GH_OK;
     }
 
     if (status == 401) {
-        set_error(out_error, GH_ERR_INVALID_TOKEN, status, "Token invalido o expirado (401).");
+        github_error_set(out_error, GH_ERR_INVALID_TOKEN, status, "Token invalido o expirado (401).");
         return GH_ERR_INVALID_TOKEN;
     }
 
     if (status == 404) {
-        set_error(out_error, GH_ERR_NOT_FOUND, status,
+        github_error_set(out_error, GH_ERR_NOT_FOUND, status,
                   "Repositorio inexistente o no accesible (404).");
         return GH_ERR_NOT_FOUND;
     }
 
     if (status == 429) {
-        set_error(out_error, GH_ERR_RATE_LIMIT_EXCEEDED, status,
+        github_error_set(out_error, GH_ERR_RATE_LIMIT_EXCEEDED, status,
                   "Demasiadas solicitudes, limite de tasa excedido (429).");
         set_reset_at_from_header(out_error, response);
         return GH_ERR_RATE_LIMIT_EXCEEDED;
@@ -114,7 +114,7 @@ GitHubErrorCode http_client_classify(const HttpResponse *response, GitHubError *
     if (status == 403) {
         const char *remaining = http_response_get_header(response, "X-RateLimit-Remaining");
         if (remaining != NULL && strcmp(remaining, "0") == 0) {
-            set_error(out_error, GH_ERR_RATE_LIMIT_EXCEEDED, status,
+            github_error_set(out_error, GH_ERR_RATE_LIMIT_EXCEEDED, status,
                       "Limite de tasa excedido (403 con X-RateLimit-Remaining=0).");
             set_reset_at_from_header(out_error, response);
             return GH_ERR_RATE_LIMIT_EXCEEDED;
@@ -132,19 +132,19 @@ GitHubErrorCode http_client_classify(const HttpResponse *response, GitHubError *
         }
 
         if (too_large) {
-            set_error(out_error, GH_ERR_RESOURCE_TOO_LARGE, status,
+            github_error_set(out_error, GH_ERR_RESOURCE_TOO_LARGE, status,
                       "El repositorio tiene demasiado historial para que GitHub calcule "
                       "este listado via API (403).");
             return GH_ERR_RESOURCE_TOO_LARGE;
         }
 
-        set_error(out_error, GH_ERR_FORBIDDEN, status, "Acceso prohibido (403).");
+        github_error_set(out_error, GH_ERR_FORBIDDEN, status, "Acceso prohibido (403).");
         return GH_ERR_FORBIDDEN;
     }
 
     char msg[160];
     snprintf(msg, sizeof(msg), "Respuesta inesperada de la API: %ld", status);
-    set_error(out_error, GH_ERR_UNEXPECTED_STATUS, status, msg);
+    github_error_set(out_error, GH_ERR_UNEXPECTED_STATUS, status, msg);
     return GH_ERR_UNEXPECTED_STATUS;
 }
 
@@ -434,14 +434,14 @@ bool http_client_get(const char *path, const char *token, const char *query,
 
     char *url = build_url(path, query);
     if (url == NULL) {
-        set_error(out_error, GH_ERR_INTERNAL, 0, "No se pudo construir la URL (sin memoria).");
+        github_error_set(out_error, GH_ERR_INTERNAL, 0, "No se pudo construir la URL (sin memoria).");
         return false;
     }
 
     CURL *curl = curl_easy_init();
     if (curl == NULL) {
         free(url);
-        set_error(out_error, GH_ERR_INTERNAL, 0, "curl_easy_init() fallo.");
+        github_error_set(out_error, GH_ERR_INTERNAL, 0, "curl_easy_init() fallo.");
         return false;
     }
 
@@ -467,7 +467,7 @@ bool http_client_get(const char *path, const char *token, const char *query,
         char msg[160];
         snprintf(msg, sizeof(msg), "Error de red al consultar la API de GitHub: %s",
                  curl_easy_strerror(result));
-        set_error(out_error, GH_ERR_NETWORK, 0, msg);
+        github_error_set(out_error, GH_ERR_NETWORK, 0, msg);
 
         free(body.data);
         header_builder_free(&headers);
@@ -490,7 +490,7 @@ bool http_client_get(const char *path, const char *token, const char *query,
     if (response == NULL) {
         free(body.data);
         header_builder_free(&headers);
-        set_error(out_error, GH_ERR_INTERNAL, 0, "Sin memoria al armar HttpResponse.");
+        github_error_set(out_error, GH_ERR_INTERNAL, 0, "Sin memoria al armar HttpResponse.");
         return false;
     }
 
@@ -542,7 +542,7 @@ GitHubErrorCode http_client_get_paginated_count(const char *path, const char *to
     http_response_free(response);
 
     if (count < 0) {
-        set_error(out_error, GH_ERR_INTERNAL, 0,
+        github_error_set(out_error, GH_ERR_INTERNAL, 0,
                   "No se pudo interpretar la respuesta paginada como un array JSON.");
         return GH_ERR_INTERNAL;
     }
@@ -583,7 +583,7 @@ GitHubErrorCode http_client_get_rate_limit_status(const char *token, RateLimitSt
     http_response_free(response);
 
     if (!ok) {
-        set_error(out_error, GH_ERR_INTERNAL, 0,
+        github_error_set(out_error, GH_ERR_INTERNAL, 0,
                   "Respuesta de /rate_limit no tiene el shape esperado (resources.core).");
         return GH_ERR_INTERNAL;
     }

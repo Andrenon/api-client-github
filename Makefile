@@ -5,12 +5,16 @@
 #   make smoke-test      -> Sprint 3.1: confirma que libcurl, sqlite3 y cJSON
 #                            están instalados/linkean y que models.h compila.
 #   make test-unit        -> Tests offline (sin red), fixtures/JSON de
-#                            ejemplo armados a mano: http_client (Sprint
-#                            3.2) + json_parser (Sprint 3.3). Rápido y
-#                            determinístico — correr siempre.
-#   make test-live         -> Sprint 3.2: tests de integración contra la
-#                            API real de api.github.com (sin token, pool
-#                            de 60 req/hora). Requiere red.
+#                            ejemplo armados a mano, SQLite en memoria, o
+#                            dependencias inyectadas: http_client (3.2) +
+#                            json_parser (3.3) + db (3.4) + core (3.5).
+#                            Rápido y determinístico — correr siempre.
+#   make test-live         -> Sprint 3.2: tests de integración de
+#                            http_client contra la API real (sin token,
+#                            pool de 60 req/hora). Requiere red.
+#   make test-core-live     -> Sprint 3.5: smoke test en vivo de
+#                            core_consolidate() real (no inyectado) contra
+#                            un repo real. Requiere red.
 #   make clean           -> borra build/
 #
 # Dependencias de sistema (Ubuntu/Debian):
@@ -53,7 +57,7 @@ TARGET  := $(BUILD_DIR)/github-client
 SOURCES := $(wildcard $(SRC_DIR)/*.c)
 OBJECTS := $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(SOURCES))
 
-.PHONY: all build clean smoke-test check-deps test-unit test-live
+.PHONY: all build clean smoke-test check-deps test-unit test-live test-core-live
 
 all: build
 
@@ -95,10 +99,13 @@ $(BUILD_DIR)/smoke_test: $(TEST_DIR)/smoke_test.c $(SRC_DIR)/models.c
 # a propósito, para poder correr cualquiera sin depender de que exista un
 # main.c real, que recién llega en el Sprint 3.6).
 
-# Sprint 3.2 — http_client (offline + en vivo)
-test-unit: $(BUILD_DIR)/test_http_client_unit $(BUILD_DIR)/test_json_parser_unit
+# http_client (offline + en vivo)
+test-unit: $(BUILD_DIR)/test_http_client_unit $(BUILD_DIR)/test_json_parser_unit \
+           $(BUILD_DIR)/test_db_unit $(BUILD_DIR)/test_core_unit
 	./$(BUILD_DIR)/test_http_client_unit
 	./$(BUILD_DIR)/test_json_parser_unit
+	./$(BUILD_DIR)/test_db_unit
+	./$(BUILD_DIR)/test_core_unit
 
 $(BUILD_DIR)/test_http_client_unit: $(TEST_DIR)/test_http_client_unit.c $(SRC_DIR)/http_client.c
 	@mkdir -p $(BUILD_DIR)
@@ -120,6 +127,37 @@ $(BUILD_DIR)/test_json_parser_unit: $(TEST_DIR)/test_json_parser_unit.c $(SRC_DI
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) -o $@ $(TEST_DIR)/test_json_parser_unit.c $(SRC_DIR)/json_parser.c \
 		$(SRC_DIR)/models.c $(SRC_DIR)/http_client.c $(LDLIBS)
+
+# Sprint 3.4 — db (offline, SQLite en memoria). Linkea http_client.c por
+# el mismo motivo que json_parser: ahi vive github_error_set().
+$(BUILD_DIR)/test_db_unit: $(TEST_DIR)/test_db_unit.c $(SRC_DIR)/db.c $(SRC_DIR)/http_client.c
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) -o $@ $(TEST_DIR)/test_db_unit.c $(SRC_DIR)/db.c $(SRC_DIR)/http_client.c \
+		$(LDLIBS)
+
+# Sprint 3.5 — core (offline, con dependencias inyectadas: ver la nota en
+# core.h sobre por que esta suite no toca la red en absoluto). Linkea
+# json_parser.c y models.c porque core.c los usa para poblar el RepoInfo
+# a partir de los bodies "de mentira" que devuelven los fakes del test.
+$(BUILD_DIR)/test_core_unit: $(TEST_DIR)/test_core_unit.c $(SRC_DIR)/core.c \
+                              $(SRC_DIR)/json_parser.c $(SRC_DIR)/models.c \
+                              $(SRC_DIR)/http_client.c
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) -o $@ $(TEST_DIR)/test_core_unit.c $(SRC_DIR)/core.c \
+		$(SRC_DIR)/json_parser.c $(SRC_DIR)/models.c $(SRC_DIR)/http_client.c $(LDLIBS)
+
+# Sprint 3.5 — smoke test en vivo de core_consolidate() real (el wrapper,
+# no la variante inyectable): confirma que el wiring contra la API real
+# funciona de punta a punta, no solo la logica de secuenciamiento.
+test-core-live: $(BUILD_DIR)/test_core_live
+	./$(BUILD_DIR)/test_core_live
+
+$(BUILD_DIR)/test_core_live: $(TEST_DIR)/test_core_live.c $(SRC_DIR)/core.c \
+                              $(SRC_DIR)/json_parser.c $(SRC_DIR)/models.c \
+                              $(SRC_DIR)/http_client.c
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) -o $@ $(TEST_DIR)/test_core_live.c $(SRC_DIR)/core.c \
+		$(SRC_DIR)/json_parser.c $(SRC_DIR)/models.c $(SRC_DIR)/http_client.c $(LDLIBS)
 
 clean:
 	rm -rf $(BUILD_DIR)

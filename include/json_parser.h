@@ -64,5 +64,31 @@ GitHubErrorCode json_parser_parse_repo(const char *json_body, RepoInfo *info,
 GitHubErrorCode json_parser_parse_languages(const char *json_body, RepoInfo *info,
                                              GitHubError *out_error);
 
+/*
+ * Serializa *info al "Esquema JSON Consolidado" del contrato de software
+ * (README.md), incluyendo los tres contadores. Es el sentido inverso de
+ * las dos funciones de arriba: mientras esas van de JSON -> RepoInfo,
+ * esta va de RepoInfo -> JSON. Se agrega en el Sprint 3.4 porque
+ * db_upsert_asset() (db.c) necesita el JSON consolidado ya serializado
+ * para guardarlo en la columna meta_payload -y es la contraparte
+ * natural de json_parser_parse_repo()/json_parser_parse_languages(), no
+ * algo que tenga sentido en http_client.c ni en db.c-. También la usará
+ * la CLI (Sprint 3.6) para la salida `--json`.
+ *
+ * contributors_count viaja como JSON null si esta ausente
+ * (OptionalCount.present == false), igual que el None de Python.
+ * description viaja como JSON null si es NULL, mismo criterio.
+ *
+ * pretty controla el formato: false para el compacto que espera
+ * meta_payload (igual que json.dumps() sin indent en db.py), true para
+ * el formato con indentacion de 2 espacios que usa la CLI --json (igual
+ * que json.dumps(..., indent=2) en github_client.py).
+ *
+ * Devuelve true + *out_json (owned, el caller hace free()), o false +
+ * *out_error poblado (solo puede fallar por falta de memoria).
+ */
+bool json_parser_serialize_repo_info(const RepoInfo *info, bool pretty, char **out_json,
+                                      GitHubError *out_error);
+
 #endif /* JSON_PARSER_H */
 
