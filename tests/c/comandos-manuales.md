@@ -152,11 +152,11 @@ valgrind --leak-check=full --error-exitcode=1 ./build/test_json_parser_unit
 ```bash
 curl -s -H "User-Agent: api-client-github" \
   -H "Accept: application/vnd.github+json" \
-  "https://api.github.com/repos/octocat/Hello-World" | python3 -m json.tool
+  "https://api.github.com/repos/octocat/Hello-World"
 
 curl -s -H "User-Agent: api-client-github" \
   -H "Accept: application/vnd.github+json" \
-  "https://api.github.com/repos/octocat/Hello-World/languages" | python3 -m json.tool
+  "https://api.github.com/repos/octocat/Hello-World/languages"
 ```
 
 ---
@@ -255,5 +255,14 @@ sqlite3 github_client.db ".schema assets"
 ```bash
 valgrind --leak-check=full --error-exitcode=1 ./build/github-client
 valgrind --leak-check=full --error-exitcode=1 ./build/github-client torvalds/linux
+```
+
+---
+
+## Fase 4 — Testing e integración
+
+### Recompilar y correr los 172 checks del proyecto.
+```bash
+make clean && make smoke-test && make build && make test-unit
 ```
 
