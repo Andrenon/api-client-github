@@ -84,6 +84,17 @@ void http_client_global_cleanup(void);
 
 void http_response_free(HttpResponse *response);
 
+/*
+ * Puebla un GitHubError a mano. Pensado para que otros modulos
+ * (json_parser.c/db.c/core.c) reporten sus propios errores
+ * internos con el mismo tipo que usa todo el resto del pipeline, 
+ * en vez de que cada .c reinvente su propio helper de armado
+ * de errores. status_code puede ser 0 si el error no viene de una
+ * respuesta HTTP (ej. "sin memoria", "JSON con forma inesperada").
+ */
+void github_error_set(GitHubError *out_error, GitHubErrorCode code, long status_code,
+                       const char *message);
+
 /* Busca un header case-insensitive (asi los define HTTP). Devuelve un
  * puntero PRESTADO hacia dentro de response->headers (no liberar); NULL
  * si no esta. */
@@ -173,10 +184,6 @@ typedef struct {
 GitHubErrorCode http_client_get_rate_limit_status(const char *token,
                                                    RateLimitStatus *out_status,
                                                    GitHubError *out_error);
-
-/* Helper público de construcción de errores */
-void github_error_set(GitHubError *out_error, GitHubErrorCode code, long status_code,
-                      const char *message);
 
 #endif /* HTTP_CLIENT_H */
 

@@ -206,3 +206,54 @@ valgrind --leak-check=full --error-exitcode=1 ./build/test_core_unit
 make test-core-live
 ```
 
+---
+
+## Sprint 3.6 — CLI (main.c) — último sprint de la Fase 3
+
+### Compilar el binario final (por primera vez en el proyecto)
+
+```bash
+make build
+```
+
+### Compilar y correr todos los unit tests offline (los 6 módulos, incluye main.c)
+
+```bash
+make test-unit
+```
+
+### Casos de parseo de argumentos (sin red)
+
+```bash
+./build/github-client                        # sin argumentos
+./build/github-client torvalds-linux          # sin '/'
+./build/github-client a/b/c                   # dos '/'
+./build/github-client /linux                  # owner vacío
+./build/github-client torvalds/linux --xml    # opción desconocida
+```
+
+### Casos con red — análogos a los comandos de Sprint 1.4 en Python
+
+```bash
+./build/github-client torvalds/linux                       # contributors: N/D
+./build/github-client pallets/flask
+./build/github-client torvalds/linux --json
+./build/github-client pallets/flask --json
+./build/github-client octocat/repo-que-no-existe-123        # caso 404
+GITHUB_TOKEN=token_invalido ./build/github-client torvalds/linux   # caso 401
+```
+
+### Inspeccionar la base persistida por el binario real
+
+```bash
+sqlite3 github_client.db "SELECT asset_uri, title, entity, provider, created_at, updated_at FROM assets;"
+sqlite3 github_client.db ".schema assets"
+```
+
+### Chequeo de memoria del binario real (no solo de los tests con fakes)
+
+```bash
+valgrind --leak-check=full --error-exitcode=1 ./build/github-client
+valgrind --leak-check=full --error-exitcode=1 ./build/github-client torvalds/linux
+```
+

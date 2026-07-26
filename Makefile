@@ -7,8 +7,9 @@
 #   make test-unit        -> Tests offline (sin red), fixtures/JSON de
 #                            ejemplo armados a mano, SQLite en memoria, o
 #                            dependencias inyectadas: http_client (3.2) +
-#                            json_parser (3.3) + db (3.4) + core (3.5).
-#                            Rápido y determinístico — correr siempre.
+#                            json_parser (3.3) + db (3.4) + core (3.5) +
+#                            main (3.6). Rápido y determinístico — correr 
+#                            siempre.
 #   make test-live         -> Sprint 3.2: tests de integración de
 #                            http_client contra la API real (sin token,
 #                            pool de 60 req/hora). Requiere red.
@@ -101,11 +102,12 @@ $(BUILD_DIR)/smoke_test: $(TEST_DIR)/smoke_test.c $(SRC_DIR)/models.c
 
 # http_client (offline + en vivo)
 test-unit: $(BUILD_DIR)/test_http_client_unit $(BUILD_DIR)/test_json_parser_unit \
-           $(BUILD_DIR)/test_db_unit $(BUILD_DIR)/test_core_unit
+           $(BUILD_DIR)/test_db_unit $(BUILD_DIR)/test_core_unit $(BUILD_DIR)/test_main_unit
 	./$(BUILD_DIR)/test_http_client_unit
 	./$(BUILD_DIR)/test_json_parser_unit
 	./$(BUILD_DIR)/test_db_unit
 	./$(BUILD_DIR)/test_core_unit
+	TZ=UTC ./$(BUILD_DIR)/test_main_unit
 
 $(BUILD_DIR)/test_http_client_unit: $(TEST_DIR)/test_http_client_unit.c $(SRC_DIR)/http_client.c
 	@mkdir -p $(BUILD_DIR)
@@ -157,6 +159,19 @@ $(BUILD_DIR)/test_core_live: $(TEST_DIR)/test_core_live.c $(SRC_DIR)/core.c \
                               $(SRC_DIR)/http_client.c
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) -o $@ $(TEST_DIR)/test_core_live.c $(SRC_DIR)/core.c \
+		$(SRC_DIR)/json_parser.c $(SRC_DIR)/models.c $(SRC_DIR)/http_client.c $(LDLIBS)
+
+# Sprint 3.6 — main (offline). test_main_unit.c incluye src/main.c
+# directamente como fuente (ver el comentario al inicio de ese archivo);
+# por eso main.c aparece como PREREQUISITO acá (para que make recompile
+# el test si main.c cambia) pero NO como argumento de compilación en la
+# receta (ya viene adentro de test_main_unit.c via #include, compilarlo
+# tambien aparte duplicaria el simbolo `main`).
+$(BUILD_DIR)/test_main_unit: $(TEST_DIR)/test_main_unit.c $(SRC_DIR)/main.c $(SRC_DIR)/core.c \
+                              $(SRC_DIR)/db.c $(SRC_DIR)/json_parser.c $(SRC_DIR)/models.c \
+                              $(SRC_DIR)/http_client.c
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) -o $@ $(TEST_DIR)/test_main_unit.c $(SRC_DIR)/core.c $(SRC_DIR)/db.c \
 		$(SRC_DIR)/json_parser.c $(SRC_DIR)/models.c $(SRC_DIR)/http_client.c $(LDLIBS)
 
 clean:
