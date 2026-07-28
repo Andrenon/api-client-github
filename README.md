@@ -8,6 +8,86 @@ El proyecto forma parte del trabajo final de la materia **Redes de Computadoras 
 
 ---
 
+# Contrato de Software
+
+## Entrada
+
+El usuario deberá especificar un repositorio utilizando el formato:
+
+```bash
+build/github-client <owner>/<repository>
+```
+
+Ejemplo:
+
+```bash
+build/github-client torvalds/linux
+```
+
+---
+
+# Instrucciones rápidas
+## Instalación
+
+El proyecto es Linux-only (probado en Ubuntu 24.04). Dependencias de sistema:
+
+```bash
+sudo apt-get update
+sudo apt-get install libcurl4-openssl-dev libsqlite3-dev libcjson-dev
+```
+
+Para confirmar que las tres quedaron resueltas vía `pkg-config` antes de compilar:
+
+```bash
+make check-deps
+```
+
+## Compilación
+
+```bash
+make build      # equivalente a "make"; genera build/github-client
+make clean      # borra build/
+```
+
+El binario resultante es autocontenido: no depende de ningún archivo en runtime más allá
+de la base SQLite que él mismo crea.
+
+## Uso
+
+```bash
+build/github-client <owner>/<repo> [--json]
+build/github-client octocat/Hello-World --json
+```
+
+**Autenticación (opcional):** definir `GITHUB_TOKEN` en el entorno sube el límite de
+solicitudes de 60 a 5000 por hora:
+
+```bash
+export GITHUB_TOKEN="github_token"
+```
+
+## Persistencia
+
+Cada corrida exitosa persiste (o actualiza) un registro en `github_client.db` (SQLite,
+creada en el directorio desde donde se ejecuta el binario):
+
+```bash
+sqlite3 github_client.db "SELECT asset_uri, title, entity, provider, created_at, updated_at FROM assets;"
+sqlite3 github_client.db ".schema assets"
+```
+
+## Testing
+
+| Target | Qué corre | Red requerida |
+|---|---|---|
+| `make smoke-test` | Confirma libcurl/sqlite3/cJSON instalados y `models.h` (15 checks) | No |
+| `make test-unit` | `http_client` + `json_parser` + `db` + `core` + `main`, offline (157 checks) | No |
+| `make test-live` | Integración de `http_client` contra la API real | Sí |
+| `make test-core-live` | Smoke test en vivo de `core_consolidate()` real | Sí |
+| `make check-deps` | Verifica que libcurl/sqlite3/libcjson resuelven vía `pkg-config` | No |
+
+---
+
 # Objetivos
 
 * Implementar un cliente HTTP en lenguaje C.
@@ -17,6 +97,8 @@ El proyecto forma parte del trabajo final de la materia **Redes de Computadoras 
 * Consolidar información proveniente de múltiples endpoints.
 * Persistir metadatos de repositorios en una base de datos SQLite.
 * Aplicar conceptos de protocolos de aplicación, serialización y comunicación cliente-servidor.
+
+**Estado: cumplido**
 
 ---
 
@@ -51,13 +133,18 @@ No se contempla:
          |
          v
 +------------------+
-| CLI Linux        |
+| CLI Linux (main) |
 +--------+---------+
          |
          v
 +------------------+
-| API Client (C)   |
+| Core/Orquestador |
 +--------+---------+
+         |
+         v
++-----------------------+
+| HTTP Client (libcurl) |
++--------+--------------+
          |
  HTTPS / REST
          |
@@ -66,31 +153,15 @@ No se contempla:
 | GitHub API       |
 +------------------+
          |
- JSON
+ JSON Parser (cJSON)
          |
          v
-+------------------+
-| SQLite           |
-+------------------+
++-----------------------+
+| Persistencia (SQLite) |
++-----------------------+
 ```
-
----
-
-# Contrato de Software
-
-## Entrada
-
-El usuario deberá especificar un repositorio utilizando el formato:
-
-```bash
-github-client <owner>/<repository>
-```
-
-Ejemplo:
-
-```bash
-github-client torvalds/linux
-```
+Mismo diagrama de componentes para Python y C — lo que cambia entre fases es la
+tecnología detrás de cada caja, no la división de responsabilidades.
 
 ---
 
@@ -161,55 +232,12 @@ Metadatos obtenidos:
 
 ## Endpoints complementarios
 
-### Lenguajes
-
-```http
-GET /repos/{owner}/{repo}/languages
-```
-
-Información obtenida:
-
-* Lenguajes utilizados.
-* Distribución por cantidad de bytes.
-
----
-
-### Contributors
-
-```http
-GET /repos/{owner}/{repo}/contributors
-```
-
-Información obtenida:
-
-* Lista de contribuidores.
-* Cantidad de contribuciones.
-
----
-
-### Releases
-
-```http
-GET /repos/{owner}/{repo}/releases
-```
-
-Información obtenida:
-
-* Releases publicadas.
-* Cantidad de versiones disponibles.
-
----
-
-### Branches
-
-```http
-GET /repos/{owner}/{repo}/branches
-```
-
-Información obtenida:
-
-* Cantidad de ramas.
-* Nombre de las ramas.
+| Endpoint | Información obtenida |
+|---|---|
+| `GET /repos/{owner}/{repo}/languages` | Lenguajes utilizados y distribución por bytes |
+| `GET /repos/{owner}/{repo}/contributors` | Cantidad de contribuidores (puede ser `null`, ver "Uso") |
+| `GET /repos/{owner}/{repo}/releases` | Cantidad de releases publicadas |
+| `GET /repos/{owner}/{repo}/branches` | Cantidad de ramas |
 
 ---
 
@@ -225,7 +253,12 @@ La extracción completa de metadatos se realizará mediante múltiples solicitud
 5. GET /repos/{owner}/{repo}/branches
 ```
 
-Los resultados serán consolidados en una única estructura JSON.
+Los resultados serán consolidados en una única estructura JSON. Ante el primer error en
+cualquiera de las 5 llamadas, la secuencia se corta ahí mismo y no se persiste un
+registro parcial — con una única excepción: si la llamada a `/contributors` devuelve el
+403 "too large to list..." (repos con historial muy grande), la secuencia **no** se
+corta; `contributors_count` queda simplemente sin dato y se continúa con releases y
+branches.
 
 ---
 
@@ -237,9 +270,13 @@ La aplicación deberá procesar los principales códigos de estado:
 | ------ | ---------------------------- |
 | 200    | Consulta exitosa             |
 | 401    | Token inválido               |
-| 403    | Límite de consultas excedido |
+| 403    | Límite de consultas excedido, recurso demasiado costoso de calcular, o forbidden genérico (ver nota)  |
 | 404    | Repositorio inexistente      |
 | 429    | Demasiadas solicitudes       |
+
+**Nota sobre 403:** en la práctica GitHub usa el mismo código para tres situaciones
+distintas (rate limit agotado, "too large to list" en `/contributors`, y forbidden por
+permisos), que el cliente distingue y reporta con mensajes distintos.
 
 ---
 
@@ -259,13 +296,16 @@ Con token personal:
 5000 requests por hora
 ```
 
-La aplicación deberá informar al usuario cuando se alcance un límite impuesto por la API.
+La aplicación informa el estado del rate limit al usuario al final de cada corrida
+exitosa, y con detalle (incluyendo hora de reset) cuando el error de una corrida es
+justamente por límite excedido.
 
 ---
 
 # Persistencia
 
-Los metadatos obtenidos serán almacenados en la tabla:
+Los metadatos obtenidos se almacenan en la tabla `assets` de una base SQLite
+(`github_client.db` por defecto):
 
 ```sql
 CREATE TABLE IF NOT EXISTS assets (
@@ -316,6 +356,10 @@ Ejemplo:
 }
 ```
 
+`description` y `contributors_count` pueden viajar como `null` (repo sin descripción, o
+repo con historial demasiado grande para que GitHub calcule contribuidores vía API,
+respectivamente) — el resto de los campos siempre está presente.
+
 ---
 
 # Estrategia de Desarrollo
@@ -352,8 +396,89 @@ Implementación final en C
 * C17
 * libcurl
 * SQLite3
-* cJSON o Jansson
+* cJSON
 * Makefile
+
+---
+
+# Resolución de bajo nivel (Capas 3, 4 y 7)
+
+El proyecto no implementa sockets, TCP ni TLS a mano — todo eso lo resuelve libcurl (y,
+por debajo, el kernel + OpenSSL) dentro de una única llamada a `curl_easy_perform()`
+(`http_client.c`). Igual vale la pena mapear explícitamente qué pasa en cada capa del
+**modelo híbrido** (Capa 3 Red / Capa 4 Transporte / Capa 7 Aplicación en sentido amplio,
+sin separar Presentación ni Sesión) y en qué archivo del proyecto aparece cada cosa.
+
+```
+  Cliente (libcurl)             api.github.com
+        │                            │
+      ┌─┴────────────────────────────┴─┐     
+      │  Capa 4 — Transporte           │
+      └─┬────────────────────────────┬─┘     
+        │────────────SYN────────────>│
+        │<───────────SYN-ACK─────────│
+        │────────────ACK────────────>│
+      ┌─┴────────────────────────────┴─┐     
+      │ TCP establecida (Handshake)    │
+      └─┬────────────────────────────┬─┘  
+      ┌─┴────────────────────────────┴─┐     
+      │ "Capa 7" — Aplicación (TLS)    │
+      └─┬────────────────────────────┬─┘ 
+        │─────────ClientHello───────>│
+        │<─ServerHello + Certificado─│
+      ┌─┴────────────────────────────┴─┐     
+      │ Sesión cifrada lista           │
+      └─┬────────────────────────────┬─┘  
+      ┌─┴────────────────────────────┴─┐     
+      │ Capa 7 — HTTP over TLS (HTTPS) │
+      └─┬────────────────────────────┬─┘
+        │─GET /repos/{owner}/{repo}─>│
+        │<─────────200 + JSON────────│ 
+        │                            │
+```
+
+## Capa 3 — Red: resolución de nombres
+
+`api.github.com` se resuelve a una dirección IP antes de poder abrir el socket. Una
+precisión que vale la pena tener presente: DNS es, en rigor, su propio protocolo de 
+aplicación (corre sobre UDP/TCP puerto 53, con su propio formato de mensaje)
+— lo ubicamos en Capa 3 acá porque es la dependencia que Capa 3 necesita resuelta antes
+de poder rutear un solo paquete (IP necesita una dirección numérica, no un hostname). La
+resolución la hace el *resolver* del sistema operativo (glibc, `getaddrinfo()`), invocado
+por libcurl — no hay una sola línea de este proyecto ni de libcurl que implemente DNS.
+
+## Capa 4 — Transporte: conexión TCP
+
+El *three-way handshake* (`SYN` → `SYN-ACK` → `ACK`) lo ejecuta el kernel al recibir el
+`connect()` sobre el socket que libcurl abre. Es control puro: ningún paquete de esta
+etapa lleva certificado, clave de sesión, ni ningún dato de aplicación — TCP todavía no
+sabe (ni le importa) si lo que va a transportar después va a estar cifrado. Cero código
+del proyecto participa acá: es 100% kernel.
+
+## Capa 7 — Aplicación (sentido amplio): TLS, HTTP, parseo y persistencia
+
+Todo lo demás cae en Capa 7 dentro del modelo híbrido, porque Presentación y Sesión (donde
+OSI separaría el cifrado) quedan fusionadas ahí:
+
+1. **Handshake TLS** (`ClientHello` → `ServerHello` + certificado → ... → `Finished`):
+   negociado por OpenSSL a través de libcurl, recién después de que el `ACK` de Capa 4 ya
+   dejó la conexión establecida. _El certificado viaja acá._
+2. **Intercambio HTTP** (ya sobre la sesión cifrada): la línea de request la arma libcurl
+   a partir de `CURLOPT_URL`; los headers (`User-Agent`, `Accept`, `Authorization`) los
+   arma explícitamente `build_request_headers()` en `http_client.c`. La respuesta llega al
+   código a través de dos callbacks que libcurl invoca — `header_write_cb()` y
+   `body_write_cb()`, también en `http_client.c` — ya sin TCP ni TLS de por medio.
+3. **Clasificación** del `status_code` (`http_client_classify()`, `http_client.c`) — pura
+   interpretación, sin red.
+4. **Parseo** del body JSON a `RepoInfo` (`json_parser_parse_repo()`/`parse_languages()`,
+   `json_parser.c`).
+5. **Persistencia** en SQLite (`db_upsert_asset()`, `db.c`).
+
+**Nota importante:** como `http_client_get()` abre y cierra su propio `CURL*` en cada
+llamada (no hay *keep-alive* entre solicitudes), esta secuencia completa —Capas 3, 4 y
+7— se repite **hasta 6 veces por corrida**: una por cada uno de los 5 endpoints de la
+consulta compuesta, más una última vez para `/rate_limit` al final. El diagrama de
+secuencia completo de esas 6 llamadas está en `docs/architecture.md`.
 
 ---
 
@@ -368,3 +493,21 @@ La aplicación será considerada funcional cuando:
 * Consolide los resultados en una estructura única.
 * Persista los metadatos en SQLite.
 * Ejecute completamente desde línea de comandos en Linux.
+
+Los 7 criterios definidos para este proyecto están **cumplidos**, con
+comandos manuales y detallado en `tests/c/checklist-criterios-exito.md`.
+
+---
+
+# Documentación adicional
+
+| Documento | Contenido |
+|---|---|
+| `docs/workplan.md` | Plan de trabajo completo, las 5 fases |
+| `docs/architecture.md` | Arquitectura, diagramas, decisiones de diseño |
+| `tests/prototype/comandos-manuales.md` | Comandos de prueba manual, acumulados por sprint |
+| `tests/prototype/informe_validacion.md` | Informe de validación de la Fase 2 (Python) 
+| `tests/c/comandos-manuales.md` | Comandos de prueba manual, acumulados por sprint |
+| `tests/c/informe_validacion.md` | Informe de validación de la Fase 4 (C) |
+| `tests/c/checklist-criterios-exito.md` | Verificación punto por punto contra los criterios de éxito |
+
